@@ -1,0 +1,17 @@
+{application, egf_gs,
+ [{description, "Game server of EGF."},
+  {vsn, "0.1.0"},
+  {registered, []},
+  {mod, {egf_gs_app, []}},
+  {applications,
+   [kernel,
+    stdlib,
+    esockd,
+    egf_config
+   ]},
+  {env,[]},
+  {modules, []},
+
+  {licenses, ["MIT"]},
+  {links, []}
+ ]}.
