@@ -58,7 +58,13 @@ start_link(Transport, Sock) ->
     {ok, State :: #state{}} | {ok, State :: #state{}, timeout() | hibernate} |
     {stop, Reason :: term()} | ignore).
 init([Transport, Sock]) ->
-    {ok, #state{transport = Transport, socket = Sock}}.
+    case Transport:wait(Sock) of
+        {ok, NewSock} ->
+            Transport:async_recv(Sock, 0, infinity),
+            State = #state{transport = Transport, socket = NewSock},
+            gen_server:enter_loop(?MODULE, [], State);
+        Error -> Error
+    end.
 
 %% @private
 %% @doc Handling call messages
@@ -88,7 +94,8 @@ handle_cast(_Request, State = #state{}) ->
     {noreply, NewState :: #state{}} |
     {noreply, NewState :: #state{}, timeout() | hibernate} |
     {stop, Reason :: term(), NewState :: #state{}}).
-handle_info(_Info, State = #state{}) ->
+handle_info(_Info, State = #state{transport = Transport, socket = Socket}) ->
+    Transport:async_recv(Socket, 0, infinity),
     {noreply, State}.
 
 %% @private

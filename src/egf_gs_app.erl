@@ -31,10 +31,16 @@
 start(_StartType, _StartArgs) ->
     init_logger(),
     ?LOG_INFO("Server starting at ~p~n", [calendar:now_to_datetime(os:timestamp())]),
-    egf_gs_sup:start_link().
+    {ok, Pid} = egf_gs_sup:start_link(),
+    start_gateway(),
+    {ok, Pid}.
 
 stop(_State) ->
     ok.
+
+start_gateway() ->
+    Path = filename:absname("./config/boot/tcp_config.cfg"),
+    ok = egf_config:load_file(Path).
 
 %% the default log level for application is 5 which means notice
 init_logger() ->
