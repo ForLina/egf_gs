@@ -5,3 +5,33 @@ the game logic is processed in this server.We highly abstract the vast majority
 of game logic, and try our best to enable users to obtain the necessary
 infrastructure through configuration, so as to focus on the logic development
 of the game.
+
+== Port Set
+
+See "./config/boot/tcp_config.cfg"
+We have optimized tcp parameters, usually you only need to modify the port.
+
+== Protocol
+Big-endian.
+
+Format of a packet:
+
+|BodyLen:2|Module:1|Function:1|PacketSeq:2|ProtocolBufferEncodedBody|
+
+*BodyLen*: BodyLen is a 2-byte long integer, indicating the length of this packet,
+excluding BodyLen itself
+
+*Module*: Module is a 1-byte integer, the message will be routed to its mapped
+module through this integer
+
+*Function*: Function is a 1-byte integer that represents the processing function
+corresponding to the message
+
+*PacketSeq*:PacketSeq is a two-byte non-negative integer, which starts from 0
+and increases in sequence, when it reaches 65535 it will increases from 0 again.
+Both the server and the client store the message of the last packet sent.
+In case of disconnection, the client re-requests the packet sequence number
+sent by the client and the packet sequence number sent by the server to decide
+whether to reconnect or log in.
+
+*ProtocolBufferEncodedBody*: Protocol buffer encoded body.
