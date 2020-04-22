@@ -1,0 +1,7 @@
+= egf_gs
+
+Game server of EGF(Erlang game framework).This is a logic server, and most of
+the game logic is processed in this server.We highly abstract the vast majority
+of game logic, and try our best to enable users to obtain the necessary
+infrastructure through configuration, so as to focus on the logic development
+of the game.
