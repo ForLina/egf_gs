@@ -29,7 +29,24 @@
 
 %% @doc callback of egf_config
 -spec handle_config(tuple()) -> ok.
-handle_config({?MODULE, ServiceName, Port, Opts, ClientMFA}) when
-    is_atom(ServiceName), is_integer(Port) ->
+handle_config({?MODULE, ServiceName, Port, TcpOpts,
+               [] = _SslOpts, ESockdOpts, ClientMFA})
+    when is_atom(ServiceName),
+         is_integer(Port),
+         is_list(TcpOpts),
+         is_list(ESockdOpts),
+         is_tuple(ClientMFA) ->
+    Opts = [{tcp_options, TcpOpts}| ESockdOpts],
+    {ok, _Pid} = esockd:open(ServiceName, Port, Opts, ClientMFA),
+    ok;
+handle_config({?MODULE, ServiceName, Port, TcpOpts,
+               SslOpts, ESockdOpts, ClientMFA})
+    when is_atom(ServiceName),
+         is_integer(Port),
+         is_list(TcpOpts),
+         is_list(SslOpts),
+         is_list(ESockdOpts),
+         is_tuple(ClientMFA) ->
+    Opts = [{tcp_options, TcpOpts}, {ssl_options, SslOpts} | ESockdOpts],
     {ok, _Pid} = esockd:open(ServiceName, Port, Opts, ClientMFA),
     ok.
