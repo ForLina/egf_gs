@@ -31,7 +31,6 @@ corresponding to the message
 and increases in sequence, when it reaches 65535 it will increases from 0 again.
 Both the server and the client store the message of the last packet sent.
 In case of disconnection, the client re-requests the packet sequence number
-sent by the client and the packet sequence number sent by the server to decide
-whether to reconnect or log in.
+sent by the client and the server to decide whether to reconnect or log in.
 
 *ProtocolBufferEncodedBody*: Protocol buffer encoded body.
