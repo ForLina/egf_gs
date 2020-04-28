@@ -20,38 +20,12 @@
 %% OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 %% SOFTWARE.
 
--module(egf_gs_app).
+-module(risk_control).
 
--behaviour(application).
+%% API
+-export([on_connect/1]).
 
--export([start/2, stop/1]).
-
--include("logger.hrl").
-
-start(_StartType, _StartArgs) ->
-    init_logger(),
-    ?LOG_INFO("Server starting at ~p~n", [calendar:now_to_datetime(os:timestamp())]),
-    
-    load_config(),
-    
-    {ok, Pid} = egf_gs_sup:start_link(),
-    start_gateway(),
-    {ok, Pid}.
-
-stop(_State) ->
-    ok.
-
-start_gateway() ->
-    Path = filename:absname("./config/boot/tcp_config.cfg"),
-    ok = egf_config:load_file(Path).
-
-%% the default log level for application is 5 which means notice
-init_logger() ->
-    logger:remove_handler(default),
-    logger:set_application_level(egf_gs, debug).
-
-%% internal functions
-
-load_config() ->
-    DevDir = filename:absname("./config/dev"),
-    ok = egf_config:add_dir(DevDir).
+%% @doc Called by egf_hook
+-spec on_connect(inet:ip_address()) -> boolean().
+on_connect(_IP) ->
+    false.

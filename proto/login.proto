@@ -1,0 +1,7 @@
+// Here we support two ways to login
+// In product environment, we use aid(user id of channel) to login usually.
+// And in develop environment, we use account to login instead.
+message cs_login {
+    optional string account = 1;
+    optional string aid = 2;
+}

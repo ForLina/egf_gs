@@ -20,12 +20,15 @@
 %% OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 %% SOFTWARE.
 
--module(egf_client).
+-module(egf_hook).
 
 -behaviour(gen_server).
 
 %% API
--export([start_link/2]).
+-export([start_link/0]).
+-export([add_on_connect_handler/2]).
+
+-export([on_connect/1]).
 
 %% gen_server callbacks
 -export([init/1, handle_call/3, handle_cast/2, handle_info/2, terminate/2,
@@ -33,20 +36,49 @@
 
 -define(SERVER, ?MODULE).
 
--record(state, {
-    transport :: atom(),
-    socket :: reference()
-}).
+-define(EGF_HOOK, egf_hook).
+-record(state, {}).
 
 %%%===================================================================
 %%% API
 %%%===================================================================
 
 %% @doc Spawns the server and registers the local name (unique)
--spec(start_link(atom(), reference()) ->
+-spec(start_link() ->
     {ok, Pid :: pid()} | ignore | {error, Reason :: term()}).
-start_link(Transport, Sock) ->
-    {ok, proc_lib:spawn_link(?MODULE, init, [[Transport, Sock]])}.
+start_link() ->
+    gen_server:start_link({local, ?SERVER}, ?MODULE, [], []).
+
+%% @doc Add event callback function
+-spec add_event(atom(), atom(), atom()) -> ok.
+add_event(EventName, Mod, Func) ->
+    gen_server:cast(?MODULE, {add_event, EventName, Mod, Func}).
+
+%% @doc Add event callback function
+-spec add_on_connect_handler(atom(), atom()) -> ok.
+add_on_connect_handler(Mod, Fun) ->
+    add_event(on_connect, Mod, Fun).
+
+%% @doc Handle on connect event
+-spec on_connect(inet:ip_address()) -> boolean().
+on_connect(Ip) ->
+    case ets:lookup(?EGF_HOOK, on_connect) of
+        [{on_connect, List}] ->
+            on_connect(List, Ip);
+        [] ->
+            true
+    end.
+
+on_connect([{M, F} | T], IP) ->
+    case M:F(IP) of
+        true ->
+            on_connect(T, IP);
+        false ->
+            false
+    end;
+on_connect([], _IP) ->
+    true.
+
 
 %%%===================================================================
 %%% gen_server callbacks
@@ -54,37 +86,12 @@ start_link(Transport, Sock) ->
 
 %% @private
 %% @doc Initializes the server
--spec init(Args :: list()) -> no_return() | {error, Reason :: term()}.
-init([Transport, Sock]) ->
-    case on_connect(Transport, Sock) of
-        true ->
-            init2(Transport, Sock);
-        false ->
-            {error, deny};
-        Error ->
-            Error
-    end.
-
-init2(Transport, Sock) ->
-    case Transport:wait(Sock) of
-        {ok, NewSock} ->
-            Transport:async_recv(Sock, 0, infinity),
-            State = #state{transport = Transport, socket = NewSock},
-            gen_server:enter_loop(?MODULE, [], State);
-        Error -> Error
-    end.
-
-%% @doc Hook the on connect event, Usually request the risk control system to
-%%      determine whether to allow this IP login.
--spec on_connect(atom(), reference()) -> boolean() |  {error, inet:posix()}.
-on_connect(Transport, Sock) ->
-    case Transport:peername(Sock) of
-        {ok, {IP, _Port}} ->
-            AllowLogin = egf_hook:on_connect(IP),
-            AllowLogin;
-        Error ->
-            Error
-    end.
+-spec(init(Args :: term()) ->
+    {ok, State :: #state{}} | {ok, State :: #state{}, timeout() | hibernate} |
+    {stop, Reason :: term()} | ignore).
+init([]) ->
+%%    ?EGF_HOOK = ets:new(?EGF_HOOK, [named_table, protected]),
+    {ok, #state{}}.
 
 %% @private
 %% @doc Handling call messages
@@ -105,6 +112,15 @@ handle_call(_Request, _From, State = #state{}) ->
     {noreply, NewState :: #state{}} |
     {noreply, NewState :: #state{}, timeout() | hibernate} |
     {stop, Reason :: term(), NewState :: #state{}}).
+handle_cast({add_event, EventName, Mod, Func}, State = #state{}) ->
+    case ets:lookup(?EGF_HOOK, EventName) of
+        [{EventName, MFs}] ->
+            NewMFs = insert_update(MFs, {Mod, Func}),
+            ets:insert(?EGF_HOOK, {EventName, NewMFs});
+        [] ->
+            ets:insert(?EGF_HOOK, {EventName, [{Mod, Func}]})
+    end,
+    {noreply, State};
 handle_cast(_Request, State = #state{}) ->
     {noreply, State}.
 
@@ -114,8 +130,7 @@ handle_cast(_Request, State = #state{}) ->
     {noreply, NewState :: #state{}} |
     {noreply, NewState :: #state{}, timeout() | hibernate} |
     {stop, Reason :: term(), NewState :: #state{}}).
-handle_info(_Info, State = #state{transport = Transport, socket = Socket}) ->
-    Transport:async_recv(Socket, 0, infinity),
+handle_info(_Info, State = #state{}) ->
     {noreply, State}.
 
 %% @private
@@ -139,3 +154,11 @@ code_change(_OldVsn, State = #state{}, _Extra) ->
 %%%===================================================================
 %%% Internal functions
 %%%===================================================================
+
+insert_update(MFs, {Mod, Func}) ->
+    case lists:keyfind(Mod, 1, MFs) of
+        {Mod, _OldFunc} ->
+            lists:keyreplace(Mod, 1, MFs, {Mod, Func});
+        false ->
+            [{Mod, Func} | MFs]
+    end.

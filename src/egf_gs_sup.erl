@@ -46,7 +46,14 @@ init([]) ->
     SupFlags = #{strategy => one_for_all,
                  intensity => 0,
                  period => 1},
-    ChildSpecs = [],
+    
+    EgfHook = #{id => egf_hook,
+                start => {egf_hook, start_link, []},
+                restart => permanent,
+                shutdown => brutal_kill,
+                type => worker,
+                modules => [egf_hook]},
+    ChildSpecs = [EgfHook],
     {ok, {SupFlags, ChildSpecs}}.
 
 %% internal functions
