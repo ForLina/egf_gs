@@ -32,10 +32,14 @@
          code_change/3]).
 
 -define(SERVER, ?MODULE).
+-define(FIRST_PACKET_TIMEOUT, 2000).
 
 -record(state, {
     transport :: atom(),
-    socket :: reference()
+    socket :: reference(),
+    login_suc = false :: boolean(),
+    player_pid :: pid(),
+    req_seq :: integer()
 }).
 
 %%%===================================================================
@@ -68,7 +72,7 @@ init([Transport, Sock]) ->
 init2(Transport, Sock) ->
     case Transport:wait(Sock) of
         {ok, NewSock} ->
-            Transport:async_recv(Sock, 0, infinity),
+            Transport:async_recv(Sock, 0, ?FIRST_PACKET_TIMEOUT),
             State = #state{transport = Transport, socket = NewSock},
             gen_server:enter_loop(?MODULE, [], State);
         Error -> Error
@@ -114,8 +118,44 @@ handle_cast(_Request, State = #state{}) ->
     {noreply, NewState :: #state{}} |
     {noreply, NewState :: #state{}, timeout() | hibernate} |
     {stop, Reason :: term(), NewState :: #state{}}).
-handle_info(_Info, State = #state{transport = Transport, socket = Socket}) ->
-    Transport:async_recv(Socket, 0, infinity),
+
+handle_info({inet_async, Socket, {error, Reason}},
+            #state{socket = Socket} = State) ->
+    {stop, {error, Reason}, State};
+
+%% Not login yet
+handle_info({inet_async, Socket, Seq, {ok, Data}},
+            State = #state{transport = Transport,
+                           socket = Socket,
+                           login_suc = false}) ->
+    ConnectProcess = self(),
+    case login_port:handle_first_packet(Data, ConnectProcess) of
+        {ok, Reply, PlayerPid} ->
+            Transport:async_send(Socket, Reply),
+            Transport:async_recv(Socket, 0, infinity),
+            {noreply, State#state{login_suc = true,
+                                  player_pid = PlayerPid,
+                                  req_seq = Seq}};
+        {error, Reason} ->
+            {stop, {error, Reason}, State}
+    end;
+
+handle_info({inet_async, Socket, Seq, {ok, Data}},
+            State = #state{transport = Transport,
+                           socket = Socket,
+                           player_pid = PlayerPid,
+                           login_suc = true}) ->
+    
+    case erlang:is_process_alive(PlayerPid) of
+        true ->
+            player:handle_msg(PlayerPid, Data),
+            Transport:async_recv(Socket, 0, infinity),
+            {noreply, State#state{req_seq = Seq}};
+        {error, Reason} ->
+            {stop, {error, Reason}, State}
+    end;
+
+handle_info(_Other, State) ->
     {noreply, State}.
 
 %% @private

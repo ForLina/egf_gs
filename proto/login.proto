@@ -1,7 +1,22 @@
-// Here we support two ways to login
-// In product environment, we use aid(user id of channel) to login usually.
-// And in develop environment, we use account to login instead.
+// Login request and reply
 message cs_login {
-    optional string account = 1;
-    optional string aid = 2;
+    required string aid = 1;
+}
+
+message sc_login {
+    required int32 ret_code = 1;
+    required int32 player_uid = 2;
+}
+
+// Reconnect request and reply
+message cs_reconnect {
+    required string aid = 1;
+    required int32 last_packet_seq_from_client = 2;
+    required int32 last_packet_seq_from_server = 3;
+}
+
+message sc_reconnect {
+    required int32 ret_code = 1;
+    required int32 last_packet_seq_from_client = 2;
+    required int32 last_packet_seq_from_server = 3;
 }

@@ -10,8 +10,33 @@
 -ifndef('CS_LOGIN_PB_H').
 -define('CS_LOGIN_PB_H', true).
 -record(cs_login,
-        {account                :: iodata() | undefined, % = 1
-         aid                    :: iodata() | undefined % = 2
+        {aid                    :: iodata()         % = 1
+        }).
+-endif.
+
+-ifndef('SC_LOGIN_PB_H').
+-define('SC_LOGIN_PB_H', true).
+-record(sc_login,
+        {ret_code               :: integer(),       % = 1, 32 bits
+         player_uid             :: integer()        % = 2, 32 bits
+        }).
+-endif.
+
+-ifndef('CS_RECONNECT_PB_H').
+-define('CS_RECONNECT_PB_H', true).
+-record(cs_reconnect,
+        {aid                    :: iodata(),        % = 1
+         last_packet_seq_from_client :: integer(),  % = 2, 32 bits
+         last_packet_seq_from_server :: integer()   % = 3, 32 bits
+        }).
+-endif.
+
+-ifndef('SC_RECONNECT_PB_H').
+-define('SC_RECONNECT_PB_H', true).
+-record(sc_reconnect,
+        {ret_code               :: integer(),       % = 1, 32 bits
+         last_packet_seq_from_client :: integer(),  % = 2, 32 bits
+         last_packet_seq_from_server :: integer()   % = 3, 32 bits
         }).
 -endif.
 

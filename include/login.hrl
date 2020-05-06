@@ -20,13 +20,10 @@
 %% OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 %% SOFTWARE.
 
--module(risk_control).
+-define(CREATE_PROCESS_FAIL, 1).
 
-%% API
--export([on_connect/1]).
+-define(CS_LOGIN, 1).
+-define(SC_LOGIN, 2).
 
-%% @doc Called by egf_hook, See egf_hook.cfg. You can request your risk control
-%%      center here.
--spec on_connect(inet:ip_address()) -> boolean().
-on_connect(_IP) ->
-    true.
+-define(CS_RECONNECT, 3).
+-define(SC_RECONNECT, 4).

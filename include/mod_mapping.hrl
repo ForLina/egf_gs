@@ -20,13 +20,9 @@
 %% OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 %% SOFTWARE.
 
--module(risk_control).
+-define(MOD_LOGIN, 1).
 
-%% API
--export([on_connect/1]).
+-define(MOD_MAPPING, [
+    {?MOD_LOGIN, login_port}
+]).
 
-%% @doc Called by egf_hook, See egf_hook.cfg. You can request your risk control
-%%      center here.
--spec on_connect(inet:ip_address()) -> boolean().
-on_connect(_IP) ->
-    true.

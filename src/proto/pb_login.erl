@@ -54,20 +54,26 @@
 %% message types
 -type cs_login() :: #cs_login{}.
 
--export_type(['cs_login'/0]).
+-type sc_login() :: #sc_login{}.
 
--spec encode_msg(#cs_login{}) -> binary().
+-type cs_reconnect() :: #cs_reconnect{}.
+
+-type sc_reconnect() :: #sc_reconnect{}.
+
+-export_type(['cs_login'/0, 'sc_login'/0, 'cs_reconnect'/0, 'sc_reconnect'/0]).
+
+-spec encode_msg(#cs_login{} | #sc_login{} | #cs_reconnect{} | #sc_reconnect{}) -> binary().
 encode_msg(Msg) when tuple_size(Msg) >= 1 ->
     encode_msg(Msg, element(1, Msg), []).
 
--spec encode_msg(#cs_login{}, atom() | list()) -> binary().
+-spec encode_msg(#cs_login{} | #sc_login{} | #cs_reconnect{} | #sc_reconnect{}, atom() | list()) -> binary().
 encode_msg(Msg, MsgName) when is_atom(MsgName) ->
     encode_msg(Msg, MsgName, []);
 encode_msg(Msg, Opts)
     when tuple_size(Msg) >= 1, is_list(Opts) ->
     encode_msg(Msg, element(1, Msg), Opts).
 
--spec encode_msg(#cs_login{}, atom(), list()) -> binary().
+-spec encode_msg(#cs_login{} | #sc_login{} | #cs_reconnect{} | #sc_reconnect{}, atom(), list()) -> binary().
 encode_msg(Msg, MsgName, Opts) ->
     case proplists:get_bool(verify, Opts) of
       true -> verify_msg(Msg, MsgName, Opts);
@@ -76,7 +82,14 @@ encode_msg(Msg, MsgName, Opts) ->
     TrUserData = proplists:get_value(user_data, Opts),
     case MsgName of
       cs_login ->
-	  encode_msg_cs_login(id(Msg, TrUserData), TrUserData)
+	  encode_msg_cs_login(id(Msg, TrUserData), TrUserData);
+      sc_login ->
+	  encode_msg_sc_login(id(Msg, TrUserData), TrUserData);
+      cs_reconnect ->
+	  encode_msg_cs_reconnect(id(Msg, TrUserData),
+				  TrUserData);
+      sc_reconnect ->
+	  encode_msg_sc_reconnect(id(Msg, TrUserData), TrUserData)
     end.
 
 
@@ -84,21 +97,69 @@ encode_msg_cs_login(Msg, TrUserData) ->
     encode_msg_cs_login(Msg, <<>>, TrUserData).
 
 
-encode_msg_cs_login(#cs_login{account = F1, aid = F2},
+encode_msg_cs_login(#cs_login{aid = F1}, Bin,
+		    TrUserData) ->
+    begin
+      TrF1 = id(F1, TrUserData),
+      e_type_string(TrF1, <<Bin/binary, 10>>, TrUserData)
+    end.
+
+encode_msg_sc_login(Msg, TrUserData) ->
+    encode_msg_sc_login(Msg, <<>>, TrUserData).
+
+
+encode_msg_sc_login(#sc_login{ret_code = F1,
+			      player_uid = F2},
 		    Bin, TrUserData) ->
-    B1 = if F1 == undefined -> Bin;
-	    true ->
-		begin
-		  TrF1 = id(F1, TrUserData),
-		  e_type_string(TrF1, <<Bin/binary, 10>>, TrUserData)
-		end
+    B1 = begin
+	   TrF1 = id(F1, TrUserData),
+	   e_type_int32(TrF1, <<Bin/binary, 8>>, TrUserData)
 	 end,
-    if F2 == undefined -> B1;
-       true ->
-	   begin
-	     TrF2 = id(F2, TrUserData),
-	     e_type_string(TrF2, <<B1/binary, 18>>, TrUserData)
-	   end
+    begin
+      TrF2 = id(F2, TrUserData),
+      e_type_int32(TrF2, <<B1/binary, 16>>, TrUserData)
+    end.
+
+encode_msg_cs_reconnect(Msg, TrUserData) ->
+    encode_msg_cs_reconnect(Msg, <<>>, TrUserData).
+
+
+encode_msg_cs_reconnect(#cs_reconnect{aid = F1,
+				      last_packet_seq_from_client = F2,
+				      last_packet_seq_from_server = F3},
+			Bin, TrUserData) ->
+    B1 = begin
+	   TrF1 = id(F1, TrUserData),
+	   e_type_string(TrF1, <<Bin/binary, 10>>, TrUserData)
+	 end,
+    B2 = begin
+	   TrF2 = id(F2, TrUserData),
+	   e_type_int32(TrF2, <<B1/binary, 16>>, TrUserData)
+	 end,
+    begin
+      TrF3 = id(F3, TrUserData),
+      e_type_int32(TrF3, <<B2/binary, 24>>, TrUserData)
+    end.
+
+encode_msg_sc_reconnect(Msg, TrUserData) ->
+    encode_msg_sc_reconnect(Msg, <<>>, TrUserData).
+
+
+encode_msg_sc_reconnect(#sc_reconnect{ret_code = F1,
+				      last_packet_seq_from_client = F2,
+				      last_packet_seq_from_server = F3},
+			Bin, TrUserData) ->
+    B1 = begin
+	   TrF1 = id(F1, TrUserData),
+	   e_type_int32(TrF1, <<Bin/binary, 8>>, TrUserData)
+	 end,
+    B2 = begin
+	   TrF2 = id(F2, TrUserData),
+	   e_type_int32(TrF2, <<B1/binary, 16>>, TrUserData)
+	 end,
+    begin
+      TrF3 = id(F3, TrUserData),
+      e_type_int32(TrF3, <<B2/binary, 24>>, TrUserData)
     end.
 
 -compile({nowarn_unused_function,e_type_sint/3}).
@@ -216,73 +277,66 @@ decode_msg_1_catch(Bin, MsgName, TrUserData) ->
 -endif.
 
 decode_msg_2_doit(cs_login, Bin, TrUserData) ->
-    id(decode_msg_cs_login(Bin, TrUserData), TrUserData).
+    id(decode_msg_cs_login(Bin, TrUserData), TrUserData);
+decode_msg_2_doit(sc_login, Bin, TrUserData) ->
+    id(decode_msg_sc_login(Bin, TrUserData), TrUserData);
+decode_msg_2_doit(cs_reconnect, Bin, TrUserData) ->
+    id(decode_msg_cs_reconnect(Bin, TrUserData),
+       TrUserData);
+decode_msg_2_doit(sc_reconnect, Bin, TrUserData) ->
+    id(decode_msg_sc_reconnect(Bin, TrUserData),
+       TrUserData).
 
 
 
 decode_msg_cs_login(Bin, TrUserData) ->
     dfp_read_field_def_cs_login(Bin, 0, 0,
-				id(undefined, TrUserData),
 				id(undefined, TrUserData), TrUserData).
 
 dfp_read_field_def_cs_login(<<10, Rest/binary>>, Z1, Z2,
-			    F@_1, F@_2, TrUserData) ->
-    d_field_cs_login_account(Rest, Z1, Z2, F@_1, F@_2,
-			     TrUserData);
-dfp_read_field_def_cs_login(<<18, Rest/binary>>, Z1, Z2,
-			    F@_1, F@_2, TrUserData) ->
-    d_field_cs_login_aid(Rest, Z1, Z2, F@_1, F@_2,
-			 TrUserData);
-dfp_read_field_def_cs_login(<<>>, 0, 0, F@_1, F@_2,
-			    _) ->
-    #cs_login{account = F@_1, aid = F@_2};
-dfp_read_field_def_cs_login(Other, Z1, Z2, F@_1, F@_2,
+			    F@_1, TrUserData) ->
+    d_field_cs_login_aid(Rest, Z1, Z2, F@_1, TrUserData);
+dfp_read_field_def_cs_login(<<>>, 0, 0, F@_1, _) ->
+    #cs_login{aid = F@_1};
+dfp_read_field_def_cs_login(Other, Z1, Z2, F@_1,
 			    TrUserData) ->
-    dg_read_field_def_cs_login(Other, Z1, Z2, F@_1, F@_2,
+    dg_read_field_def_cs_login(Other, Z1, Z2, F@_1,
 			       TrUserData).
 
 dg_read_field_def_cs_login(<<1:1, X:7, Rest/binary>>, N,
-			   Acc, F@_1, F@_2, TrUserData)
+			   Acc, F@_1, TrUserData)
     when N < 32 - 7 ->
     dg_read_field_def_cs_login(Rest, N + 7, X bsl N + Acc,
-			       F@_1, F@_2, TrUserData);
+			       F@_1, TrUserData);
 dg_read_field_def_cs_login(<<0:1, X:7, Rest/binary>>, N,
-			   Acc, F@_1, F@_2, TrUserData) ->
+			   Acc, F@_1, TrUserData) ->
     Key = X bsl N + Acc,
     case Key of
       10 ->
-	  d_field_cs_login_account(Rest, 0, 0, F@_1, F@_2,
-				   TrUserData);
-      18 ->
-	  d_field_cs_login_aid(Rest, 0, 0, F@_1, F@_2,
-			       TrUserData);
+	  d_field_cs_login_aid(Rest, 0, 0, F@_1, TrUserData);
       _ ->
 	  case Key band 7 of
-	    0 ->
-		skip_varint_cs_login(Rest, 0, 0, F@_1, F@_2,
-				     TrUserData);
-	    1 ->
-		skip_64_cs_login(Rest, 0, 0, F@_1, F@_2, TrUserData);
+	    0 -> skip_varint_cs_login(Rest, 0, 0, F@_1, TrUserData);
+	    1 -> skip_64_cs_login(Rest, 0, 0, F@_1, TrUserData);
 	    2 ->
-		skip_length_delimited_cs_login(Rest, 0, 0, F@_1, F@_2,
+		skip_length_delimited_cs_login(Rest, 0, 0, F@_1,
 					       TrUserData);
 	    3 ->
-		skip_group_cs_login(Rest, Key bsr 3, 0, F@_1, F@_2,
+		skip_group_cs_login(Rest, Key bsr 3, 0, F@_1,
 				    TrUserData);
-	    5 ->
-		skip_32_cs_login(Rest, 0, 0, F@_1, F@_2, TrUserData)
+	    5 -> skip_32_cs_login(Rest, 0, 0, F@_1, TrUserData)
 	  end
     end;
-dg_read_field_def_cs_login(<<>>, 0, 0, F@_1, F@_2, _) ->
-    #cs_login{account = F@_1, aid = F@_2}.
+dg_read_field_def_cs_login(<<>>, 0, 0, F@_1, _) ->
+    #cs_login{aid = F@_1}.
 
-d_field_cs_login_account(<<1:1, X:7, Rest/binary>>, N,
-			 Acc, F@_1, F@_2, TrUserData)
+d_field_cs_login_aid(<<1:1, X:7, Rest/binary>>, N, Acc,
+		     F@_1, TrUserData)
     when N < 57 ->
-    d_field_cs_login_account(Rest, N + 7, X bsl N + Acc,
-			     F@_1, F@_2, TrUserData);
-d_field_cs_login_account(<<0:1, X:7, Rest/binary>>, N,
-			 Acc, _, F@_2, TrUserData) ->
+    d_field_cs_login_aid(Rest, N + 7, X bsl N + Acc, F@_1,
+			 TrUserData);
+d_field_cs_login_aid(<<0:1, X:7, Rest/binary>>, N, Acc,
+		     _, TrUserData) ->
     {NewFValue, RestF} = begin
 			   Len = X bsl N + Acc,
 			   <<Utf8:Len/binary, Rest2/binary>> = Rest,
@@ -291,15 +345,256 @@ d_field_cs_login_account(<<0:1, X:7, Rest/binary>>, N,
 			    Rest2}
 			 end,
     dfp_read_field_def_cs_login(RestF, 0, 0, NewFValue,
+				TrUserData).
+
+skip_varint_cs_login(<<1:1, _:7, Rest/binary>>, Z1, Z2,
+		     F@_1, TrUserData) ->
+    skip_varint_cs_login(Rest, Z1, Z2, F@_1, TrUserData);
+skip_varint_cs_login(<<0:1, _:7, Rest/binary>>, Z1, Z2,
+		     F@_1, TrUserData) ->
+    dfp_read_field_def_cs_login(Rest, Z1, Z2, F@_1,
+				TrUserData).
+
+skip_length_delimited_cs_login(<<1:1, X:7,
+				 Rest/binary>>,
+			       N, Acc, F@_1, TrUserData)
+    when N < 57 ->
+    skip_length_delimited_cs_login(Rest, N + 7,
+				   X bsl N + Acc, F@_1, TrUserData);
+skip_length_delimited_cs_login(<<0:1, X:7,
+				 Rest/binary>>,
+			       N, Acc, F@_1, TrUserData) ->
+    Length = X bsl N + Acc,
+    <<_:Length/binary, Rest2/binary>> = Rest,
+    dfp_read_field_def_cs_login(Rest2, 0, 0, F@_1,
+				TrUserData).
+
+skip_group_cs_login(Bin, FNum, Z2, F@_1, TrUserData) ->
+    {_, Rest} = read_group(Bin, FNum),
+    dfp_read_field_def_cs_login(Rest, 0, Z2, F@_1,
+				TrUserData).
+
+skip_32_cs_login(<<_:32, Rest/binary>>, Z1, Z2, F@_1,
+		 TrUserData) ->
+    dfp_read_field_def_cs_login(Rest, Z1, Z2, F@_1,
+				TrUserData).
+
+skip_64_cs_login(<<_:64, Rest/binary>>, Z1, Z2, F@_1,
+		 TrUserData) ->
+    dfp_read_field_def_cs_login(Rest, Z1, Z2, F@_1,
+				TrUserData).
+
+decode_msg_sc_login(Bin, TrUserData) ->
+    dfp_read_field_def_sc_login(Bin, 0, 0,
+				id(undefined, TrUserData),
+				id(undefined, TrUserData), TrUserData).
+
+dfp_read_field_def_sc_login(<<8, Rest/binary>>, Z1, Z2,
+			    F@_1, F@_2, TrUserData) ->
+    d_field_sc_login_ret_code(Rest, Z1, Z2, F@_1, F@_2,
+			      TrUserData);
+dfp_read_field_def_sc_login(<<16, Rest/binary>>, Z1, Z2,
+			    F@_1, F@_2, TrUserData) ->
+    d_field_sc_login_player_uid(Rest, Z1, Z2, F@_1, F@_2,
+				TrUserData);
+dfp_read_field_def_sc_login(<<>>, 0, 0, F@_1, F@_2,
+			    _) ->
+    #sc_login{ret_code = F@_1, player_uid = F@_2};
+dfp_read_field_def_sc_login(Other, Z1, Z2, F@_1, F@_2,
+			    TrUserData) ->
+    dg_read_field_def_sc_login(Other, Z1, Z2, F@_1, F@_2,
+			       TrUserData).
+
+dg_read_field_def_sc_login(<<1:1, X:7, Rest/binary>>, N,
+			   Acc, F@_1, F@_2, TrUserData)
+    when N < 32 - 7 ->
+    dg_read_field_def_sc_login(Rest, N + 7, X bsl N + Acc,
+			       F@_1, F@_2, TrUserData);
+dg_read_field_def_sc_login(<<0:1, X:7, Rest/binary>>, N,
+			   Acc, F@_1, F@_2, TrUserData) ->
+    Key = X bsl N + Acc,
+    case Key of
+      8 ->
+	  d_field_sc_login_ret_code(Rest, 0, 0, F@_1, F@_2,
+				    TrUserData);
+      16 ->
+	  d_field_sc_login_player_uid(Rest, 0, 0, F@_1, F@_2,
+				      TrUserData);
+      _ ->
+	  case Key band 7 of
+	    0 ->
+		skip_varint_sc_login(Rest, 0, 0, F@_1, F@_2,
+				     TrUserData);
+	    1 ->
+		skip_64_sc_login(Rest, 0, 0, F@_1, F@_2, TrUserData);
+	    2 ->
+		skip_length_delimited_sc_login(Rest, 0, 0, F@_1, F@_2,
+					       TrUserData);
+	    3 ->
+		skip_group_sc_login(Rest, Key bsr 3, 0, F@_1, F@_2,
+				    TrUserData);
+	    5 ->
+		skip_32_sc_login(Rest, 0, 0, F@_1, F@_2, TrUserData)
+	  end
+    end;
+dg_read_field_def_sc_login(<<>>, 0, 0, F@_1, F@_2, _) ->
+    #sc_login{ret_code = F@_1, player_uid = F@_2}.
+
+d_field_sc_login_ret_code(<<1:1, X:7, Rest/binary>>, N,
+			  Acc, F@_1, F@_2, TrUserData)
+    when N < 57 ->
+    d_field_sc_login_ret_code(Rest, N + 7, X bsl N + Acc,
+			      F@_1, F@_2, TrUserData);
+d_field_sc_login_ret_code(<<0:1, X:7, Rest/binary>>, N,
+			  Acc, _, F@_2, TrUserData) ->
+    {NewFValue, RestF} = {begin
+			    <<Res:32/signed-native>> = <<(X bsl N +
+							    Acc):32/unsigned-native>>,
+			    id(Res, TrUserData)
+			  end,
+			  Rest},
+    dfp_read_field_def_sc_login(RestF, 0, 0, NewFValue,
 				F@_2, TrUserData).
 
-d_field_cs_login_aid(<<1:1, X:7, Rest/binary>>, N, Acc,
-		     F@_1, F@_2, TrUserData)
+d_field_sc_login_player_uid(<<1:1, X:7, Rest/binary>>,
+			    N, Acc, F@_1, F@_2, TrUserData)
     when N < 57 ->
-    d_field_cs_login_aid(Rest, N + 7, X bsl N + Acc, F@_1,
-			 F@_2, TrUserData);
-d_field_cs_login_aid(<<0:1, X:7, Rest/binary>>, N, Acc,
-		     F@_1, _, TrUserData) ->
+    d_field_sc_login_player_uid(Rest, N + 7, X bsl N + Acc,
+				F@_1, F@_2, TrUserData);
+d_field_sc_login_player_uid(<<0:1, X:7, Rest/binary>>,
+			    N, Acc, F@_1, _, TrUserData) ->
+    {NewFValue, RestF} = {begin
+			    <<Res:32/signed-native>> = <<(X bsl N +
+							    Acc):32/unsigned-native>>,
+			    id(Res, TrUserData)
+			  end,
+			  Rest},
+    dfp_read_field_def_sc_login(RestF, 0, 0, F@_1,
+				NewFValue, TrUserData).
+
+skip_varint_sc_login(<<1:1, _:7, Rest/binary>>, Z1, Z2,
+		     F@_1, F@_2, TrUserData) ->
+    skip_varint_sc_login(Rest, Z1, Z2, F@_1, F@_2,
+			 TrUserData);
+skip_varint_sc_login(<<0:1, _:7, Rest/binary>>, Z1, Z2,
+		     F@_1, F@_2, TrUserData) ->
+    dfp_read_field_def_sc_login(Rest, Z1, Z2, F@_1, F@_2,
+				TrUserData).
+
+skip_length_delimited_sc_login(<<1:1, X:7,
+				 Rest/binary>>,
+			       N, Acc, F@_1, F@_2, TrUserData)
+    when N < 57 ->
+    skip_length_delimited_sc_login(Rest, N + 7,
+				   X bsl N + Acc, F@_1, F@_2, TrUserData);
+skip_length_delimited_sc_login(<<0:1, X:7,
+				 Rest/binary>>,
+			       N, Acc, F@_1, F@_2, TrUserData) ->
+    Length = X bsl N + Acc,
+    <<_:Length/binary, Rest2/binary>> = Rest,
+    dfp_read_field_def_sc_login(Rest2, 0, 0, F@_1, F@_2,
+				TrUserData).
+
+skip_group_sc_login(Bin, FNum, Z2, F@_1, F@_2,
+		    TrUserData) ->
+    {_, Rest} = read_group(Bin, FNum),
+    dfp_read_field_def_sc_login(Rest, 0, Z2, F@_1, F@_2,
+				TrUserData).
+
+skip_32_sc_login(<<_:32, Rest/binary>>, Z1, Z2, F@_1,
+		 F@_2, TrUserData) ->
+    dfp_read_field_def_sc_login(Rest, Z1, Z2, F@_1, F@_2,
+				TrUserData).
+
+skip_64_sc_login(<<_:64, Rest/binary>>, Z1, Z2, F@_1,
+		 F@_2, TrUserData) ->
+    dfp_read_field_def_sc_login(Rest, Z1, Z2, F@_1, F@_2,
+				TrUserData).
+
+decode_msg_cs_reconnect(Bin, TrUserData) ->
+    dfp_read_field_def_cs_reconnect(Bin, 0, 0,
+				    id(undefined, TrUserData),
+				    id(undefined, TrUserData),
+				    id(undefined, TrUserData), TrUserData).
+
+dfp_read_field_def_cs_reconnect(<<10, Rest/binary>>, Z1,
+				Z2, F@_1, F@_2, F@_3, TrUserData) ->
+    d_field_cs_reconnect_aid(Rest, Z1, Z2, F@_1, F@_2, F@_3,
+			     TrUserData);
+dfp_read_field_def_cs_reconnect(<<16, Rest/binary>>, Z1,
+				Z2, F@_1, F@_2, F@_3, TrUserData) ->
+    d_field_cs_reconnect_last_packet_seq_from_client(Rest,
+						     Z1, Z2, F@_1, F@_2, F@_3,
+						     TrUserData);
+dfp_read_field_def_cs_reconnect(<<24, Rest/binary>>, Z1,
+				Z2, F@_1, F@_2, F@_3, TrUserData) ->
+    d_field_cs_reconnect_last_packet_seq_from_server(Rest,
+						     Z1, Z2, F@_1, F@_2, F@_3,
+						     TrUserData);
+dfp_read_field_def_cs_reconnect(<<>>, 0, 0, F@_1, F@_2,
+				F@_3, _) ->
+    #cs_reconnect{aid = F@_1,
+		  last_packet_seq_from_client = F@_2,
+		  last_packet_seq_from_server = F@_3};
+dfp_read_field_def_cs_reconnect(Other, Z1, Z2, F@_1,
+				F@_2, F@_3, TrUserData) ->
+    dg_read_field_def_cs_reconnect(Other, Z1, Z2, F@_1,
+				   F@_2, F@_3, TrUserData).
+
+dg_read_field_def_cs_reconnect(<<1:1, X:7,
+				 Rest/binary>>,
+			       N, Acc, F@_1, F@_2, F@_3, TrUserData)
+    when N < 32 - 7 ->
+    dg_read_field_def_cs_reconnect(Rest, N + 7,
+				   X bsl N + Acc, F@_1, F@_2, F@_3, TrUserData);
+dg_read_field_def_cs_reconnect(<<0:1, X:7,
+				 Rest/binary>>,
+			       N, Acc, F@_1, F@_2, F@_3, TrUserData) ->
+    Key = X bsl N + Acc,
+    case Key of
+      10 ->
+	  d_field_cs_reconnect_aid(Rest, 0, 0, F@_1, F@_2, F@_3,
+				   TrUserData);
+      16 ->
+	  d_field_cs_reconnect_last_packet_seq_from_client(Rest,
+							   0, 0, F@_1, F@_2,
+							   F@_3, TrUserData);
+      24 ->
+	  d_field_cs_reconnect_last_packet_seq_from_server(Rest,
+							   0, 0, F@_1, F@_2,
+							   F@_3, TrUserData);
+      _ ->
+	  case Key band 7 of
+	    0 ->
+		skip_varint_cs_reconnect(Rest, 0, 0, F@_1, F@_2, F@_3,
+					 TrUserData);
+	    1 ->
+		skip_64_cs_reconnect(Rest, 0, 0, F@_1, F@_2, F@_3,
+				     TrUserData);
+	    2 ->
+		skip_length_delimited_cs_reconnect(Rest, 0, 0, F@_1,
+						   F@_2, F@_3, TrUserData);
+	    3 ->
+		skip_group_cs_reconnect(Rest, Key bsr 3, 0, F@_1, F@_2,
+					F@_3, TrUserData);
+	    5 ->
+		skip_32_cs_reconnect(Rest, 0, 0, F@_1, F@_2, F@_3,
+				     TrUserData)
+	  end
+    end;
+dg_read_field_def_cs_reconnect(<<>>, 0, 0, F@_1, F@_2,
+			       F@_3, _) ->
+    #cs_reconnect{aid = F@_1,
+		  last_packet_seq_from_client = F@_2,
+		  last_packet_seq_from_server = F@_3}.
+
+d_field_cs_reconnect_aid(<<1:1, X:7, Rest/binary>>, N,
+			 Acc, F@_1, F@_2, F@_3, TrUserData)
+    when N < 57 ->
+    d_field_cs_reconnect_aid(Rest, N + 7, X bsl N + Acc,
+			     F@_1, F@_2, F@_3, TrUserData);
+d_field_cs_reconnect_aid(<<0:1, X:7, Rest/binary>>, N,
+			 Acc, _, F@_2, F@_3, TrUserData) ->
     {NewFValue, RestF} = begin
 			   Len = X bsl N + Acc,
 			   <<Utf8:Len/binary, Rest2/binary>> = Rest,
@@ -307,47 +602,265 @@ d_field_cs_login_aid(<<0:1, X:7, Rest/binary>>, N, Acc,
 			       TrUserData),
 			    Rest2}
 			 end,
-    dfp_read_field_def_cs_login(RestF, 0, 0, F@_1,
-				NewFValue, TrUserData).
+    dfp_read_field_def_cs_reconnect(RestF, 0, 0, NewFValue,
+				    F@_2, F@_3, TrUserData).
 
-skip_varint_cs_login(<<1:1, _:7, Rest/binary>>, Z1, Z2,
-		     F@_1, F@_2, TrUserData) ->
-    skip_varint_cs_login(Rest, Z1, Z2, F@_1, F@_2,
-			 TrUserData);
-skip_varint_cs_login(<<0:1, _:7, Rest/binary>>, Z1, Z2,
-		     F@_1, F@_2, TrUserData) ->
-    dfp_read_field_def_cs_login(Rest, Z1, Z2, F@_1, F@_2,
-				TrUserData).
-
-skip_length_delimited_cs_login(<<1:1, X:7,
-				 Rest/binary>>,
-			       N, Acc, F@_1, F@_2, TrUserData)
+d_field_cs_reconnect_last_packet_seq_from_client(<<1:1,
+						   X:7, Rest/binary>>,
+						 N, Acc, F@_1, F@_2, F@_3,
+						 TrUserData)
     when N < 57 ->
-    skip_length_delimited_cs_login(Rest, N + 7,
-				   X bsl N + Acc, F@_1, F@_2, TrUserData);
-skip_length_delimited_cs_login(<<0:1, X:7,
-				 Rest/binary>>,
-			       N, Acc, F@_1, F@_2, TrUserData) ->
+    d_field_cs_reconnect_last_packet_seq_from_client(Rest,
+						     N + 7, X bsl N + Acc, F@_1,
+						     F@_2, F@_3, TrUserData);
+d_field_cs_reconnect_last_packet_seq_from_client(<<0:1,
+						   X:7, Rest/binary>>,
+						 N, Acc, F@_1, _, F@_3,
+						 TrUserData) ->
+    {NewFValue, RestF} = {begin
+			    <<Res:32/signed-native>> = <<(X bsl N +
+							    Acc):32/unsigned-native>>,
+			    id(Res, TrUserData)
+			  end,
+			  Rest},
+    dfp_read_field_def_cs_reconnect(RestF, 0, 0, F@_1,
+				    NewFValue, F@_3, TrUserData).
+
+d_field_cs_reconnect_last_packet_seq_from_server(<<1:1,
+						   X:7, Rest/binary>>,
+						 N, Acc, F@_1, F@_2, F@_3,
+						 TrUserData)
+    when N < 57 ->
+    d_field_cs_reconnect_last_packet_seq_from_server(Rest,
+						     N + 7, X bsl N + Acc, F@_1,
+						     F@_2, F@_3, TrUserData);
+d_field_cs_reconnect_last_packet_seq_from_server(<<0:1,
+						   X:7, Rest/binary>>,
+						 N, Acc, F@_1, F@_2, _,
+						 TrUserData) ->
+    {NewFValue, RestF} = {begin
+			    <<Res:32/signed-native>> = <<(X bsl N +
+							    Acc):32/unsigned-native>>,
+			    id(Res, TrUserData)
+			  end,
+			  Rest},
+    dfp_read_field_def_cs_reconnect(RestF, 0, 0, F@_1, F@_2,
+				    NewFValue, TrUserData).
+
+skip_varint_cs_reconnect(<<1:1, _:7, Rest/binary>>, Z1,
+			 Z2, F@_1, F@_2, F@_3, TrUserData) ->
+    skip_varint_cs_reconnect(Rest, Z1, Z2, F@_1, F@_2, F@_3,
+			     TrUserData);
+skip_varint_cs_reconnect(<<0:1, _:7, Rest/binary>>, Z1,
+			 Z2, F@_1, F@_2, F@_3, TrUserData) ->
+    dfp_read_field_def_cs_reconnect(Rest, Z1, Z2, F@_1,
+				    F@_2, F@_3, TrUserData).
+
+skip_length_delimited_cs_reconnect(<<1:1, X:7,
+				     Rest/binary>>,
+				   N, Acc, F@_1, F@_2, F@_3, TrUserData)
+    when N < 57 ->
+    skip_length_delimited_cs_reconnect(Rest, N + 7,
+				       X bsl N + Acc, F@_1, F@_2, F@_3,
+				       TrUserData);
+skip_length_delimited_cs_reconnect(<<0:1, X:7,
+				     Rest/binary>>,
+				   N, Acc, F@_1, F@_2, F@_3, TrUserData) ->
     Length = X bsl N + Acc,
     <<_:Length/binary, Rest2/binary>> = Rest,
-    dfp_read_field_def_cs_login(Rest2, 0, 0, F@_1, F@_2,
-				TrUserData).
+    dfp_read_field_def_cs_reconnect(Rest2, 0, 0, F@_1, F@_2,
+				    F@_3, TrUserData).
 
-skip_group_cs_login(Bin, FNum, Z2, F@_1, F@_2,
-		    TrUserData) ->
+skip_group_cs_reconnect(Bin, FNum, Z2, F@_1, F@_2, F@_3,
+			TrUserData) ->
     {_, Rest} = read_group(Bin, FNum),
-    dfp_read_field_def_cs_login(Rest, 0, Z2, F@_1, F@_2,
-				TrUserData).
+    dfp_read_field_def_cs_reconnect(Rest, 0, Z2, F@_1, F@_2,
+				    F@_3, TrUserData).
 
-skip_32_cs_login(<<_:32, Rest/binary>>, Z1, Z2, F@_1,
-		 F@_2, TrUserData) ->
-    dfp_read_field_def_cs_login(Rest, Z1, Z2, F@_1, F@_2,
-				TrUserData).
+skip_32_cs_reconnect(<<_:32, Rest/binary>>, Z1, Z2,
+		     F@_1, F@_2, F@_3, TrUserData) ->
+    dfp_read_field_def_cs_reconnect(Rest, Z1, Z2, F@_1,
+				    F@_2, F@_3, TrUserData).
 
-skip_64_cs_login(<<_:64, Rest/binary>>, Z1, Z2, F@_1,
-		 F@_2, TrUserData) ->
-    dfp_read_field_def_cs_login(Rest, Z1, Z2, F@_1, F@_2,
-				TrUserData).
+skip_64_cs_reconnect(<<_:64, Rest/binary>>, Z1, Z2,
+		     F@_1, F@_2, F@_3, TrUserData) ->
+    dfp_read_field_def_cs_reconnect(Rest, Z1, Z2, F@_1,
+				    F@_2, F@_3, TrUserData).
+
+decode_msg_sc_reconnect(Bin, TrUserData) ->
+    dfp_read_field_def_sc_reconnect(Bin, 0, 0,
+				    id(undefined, TrUserData),
+				    id(undefined, TrUserData),
+				    id(undefined, TrUserData), TrUserData).
+
+dfp_read_field_def_sc_reconnect(<<8, Rest/binary>>, Z1,
+				Z2, F@_1, F@_2, F@_3, TrUserData) ->
+    d_field_sc_reconnect_ret_code(Rest, Z1, Z2, F@_1, F@_2,
+				  F@_3, TrUserData);
+dfp_read_field_def_sc_reconnect(<<16, Rest/binary>>, Z1,
+				Z2, F@_1, F@_2, F@_3, TrUserData) ->
+    d_field_sc_reconnect_last_packet_seq_from_client(Rest,
+						     Z1, Z2, F@_1, F@_2, F@_3,
+						     TrUserData);
+dfp_read_field_def_sc_reconnect(<<24, Rest/binary>>, Z1,
+				Z2, F@_1, F@_2, F@_3, TrUserData) ->
+    d_field_sc_reconnect_last_packet_seq_from_server(Rest,
+						     Z1, Z2, F@_1, F@_2, F@_3,
+						     TrUserData);
+dfp_read_field_def_sc_reconnect(<<>>, 0, 0, F@_1, F@_2,
+				F@_3, _) ->
+    #sc_reconnect{ret_code = F@_1,
+		  last_packet_seq_from_client = F@_2,
+		  last_packet_seq_from_server = F@_3};
+dfp_read_field_def_sc_reconnect(Other, Z1, Z2, F@_1,
+				F@_2, F@_3, TrUserData) ->
+    dg_read_field_def_sc_reconnect(Other, Z1, Z2, F@_1,
+				   F@_2, F@_3, TrUserData).
+
+dg_read_field_def_sc_reconnect(<<1:1, X:7,
+				 Rest/binary>>,
+			       N, Acc, F@_1, F@_2, F@_3, TrUserData)
+    when N < 32 - 7 ->
+    dg_read_field_def_sc_reconnect(Rest, N + 7,
+				   X bsl N + Acc, F@_1, F@_2, F@_3, TrUserData);
+dg_read_field_def_sc_reconnect(<<0:1, X:7,
+				 Rest/binary>>,
+			       N, Acc, F@_1, F@_2, F@_3, TrUserData) ->
+    Key = X bsl N + Acc,
+    case Key of
+      8 ->
+	  d_field_sc_reconnect_ret_code(Rest, 0, 0, F@_1, F@_2,
+					F@_3, TrUserData);
+      16 ->
+	  d_field_sc_reconnect_last_packet_seq_from_client(Rest,
+							   0, 0, F@_1, F@_2,
+							   F@_3, TrUserData);
+      24 ->
+	  d_field_sc_reconnect_last_packet_seq_from_server(Rest,
+							   0, 0, F@_1, F@_2,
+							   F@_3, TrUserData);
+      _ ->
+	  case Key band 7 of
+	    0 ->
+		skip_varint_sc_reconnect(Rest, 0, 0, F@_1, F@_2, F@_3,
+					 TrUserData);
+	    1 ->
+		skip_64_sc_reconnect(Rest, 0, 0, F@_1, F@_2, F@_3,
+				     TrUserData);
+	    2 ->
+		skip_length_delimited_sc_reconnect(Rest, 0, 0, F@_1,
+						   F@_2, F@_3, TrUserData);
+	    3 ->
+		skip_group_sc_reconnect(Rest, Key bsr 3, 0, F@_1, F@_2,
+					F@_3, TrUserData);
+	    5 ->
+		skip_32_sc_reconnect(Rest, 0, 0, F@_1, F@_2, F@_3,
+				     TrUserData)
+	  end
+    end;
+dg_read_field_def_sc_reconnect(<<>>, 0, 0, F@_1, F@_2,
+			       F@_3, _) ->
+    #sc_reconnect{ret_code = F@_1,
+		  last_packet_seq_from_client = F@_2,
+		  last_packet_seq_from_server = F@_3}.
+
+d_field_sc_reconnect_ret_code(<<1:1, X:7, Rest/binary>>,
+			      N, Acc, F@_1, F@_2, F@_3, TrUserData)
+    when N < 57 ->
+    d_field_sc_reconnect_ret_code(Rest, N + 7,
+				  X bsl N + Acc, F@_1, F@_2, F@_3, TrUserData);
+d_field_sc_reconnect_ret_code(<<0:1, X:7, Rest/binary>>,
+			      N, Acc, _, F@_2, F@_3, TrUserData) ->
+    {NewFValue, RestF} = {begin
+			    <<Res:32/signed-native>> = <<(X bsl N +
+							    Acc):32/unsigned-native>>,
+			    id(Res, TrUserData)
+			  end,
+			  Rest},
+    dfp_read_field_def_sc_reconnect(RestF, 0, 0, NewFValue,
+				    F@_2, F@_3, TrUserData).
+
+d_field_sc_reconnect_last_packet_seq_from_client(<<1:1,
+						   X:7, Rest/binary>>,
+						 N, Acc, F@_1, F@_2, F@_3,
+						 TrUserData)
+    when N < 57 ->
+    d_field_sc_reconnect_last_packet_seq_from_client(Rest,
+						     N + 7, X bsl N + Acc, F@_1,
+						     F@_2, F@_3, TrUserData);
+d_field_sc_reconnect_last_packet_seq_from_client(<<0:1,
+						   X:7, Rest/binary>>,
+						 N, Acc, F@_1, _, F@_3,
+						 TrUserData) ->
+    {NewFValue, RestF} = {begin
+			    <<Res:32/signed-native>> = <<(X bsl N +
+							    Acc):32/unsigned-native>>,
+			    id(Res, TrUserData)
+			  end,
+			  Rest},
+    dfp_read_field_def_sc_reconnect(RestF, 0, 0, F@_1,
+				    NewFValue, F@_3, TrUserData).
+
+d_field_sc_reconnect_last_packet_seq_from_server(<<1:1,
+						   X:7, Rest/binary>>,
+						 N, Acc, F@_1, F@_2, F@_3,
+						 TrUserData)
+    when N < 57 ->
+    d_field_sc_reconnect_last_packet_seq_from_server(Rest,
+						     N + 7, X bsl N + Acc, F@_1,
+						     F@_2, F@_3, TrUserData);
+d_field_sc_reconnect_last_packet_seq_from_server(<<0:1,
+						   X:7, Rest/binary>>,
+						 N, Acc, F@_1, F@_2, _,
+						 TrUserData) ->
+    {NewFValue, RestF} = {begin
+			    <<Res:32/signed-native>> = <<(X bsl N +
+							    Acc):32/unsigned-native>>,
+			    id(Res, TrUserData)
+			  end,
+			  Rest},
+    dfp_read_field_def_sc_reconnect(RestF, 0, 0, F@_1, F@_2,
+				    NewFValue, TrUserData).
+
+skip_varint_sc_reconnect(<<1:1, _:7, Rest/binary>>, Z1,
+			 Z2, F@_1, F@_2, F@_3, TrUserData) ->
+    skip_varint_sc_reconnect(Rest, Z1, Z2, F@_1, F@_2, F@_3,
+			     TrUserData);
+skip_varint_sc_reconnect(<<0:1, _:7, Rest/binary>>, Z1,
+			 Z2, F@_1, F@_2, F@_3, TrUserData) ->
+    dfp_read_field_def_sc_reconnect(Rest, Z1, Z2, F@_1,
+				    F@_2, F@_3, TrUserData).
+
+skip_length_delimited_sc_reconnect(<<1:1, X:7,
+				     Rest/binary>>,
+				   N, Acc, F@_1, F@_2, F@_3, TrUserData)
+    when N < 57 ->
+    skip_length_delimited_sc_reconnect(Rest, N + 7,
+				       X bsl N + Acc, F@_1, F@_2, F@_3,
+				       TrUserData);
+skip_length_delimited_sc_reconnect(<<0:1, X:7,
+				     Rest/binary>>,
+				   N, Acc, F@_1, F@_2, F@_3, TrUserData) ->
+    Length = X bsl N + Acc,
+    <<_:Length/binary, Rest2/binary>> = Rest,
+    dfp_read_field_def_sc_reconnect(Rest2, 0, 0, F@_1, F@_2,
+				    F@_3, TrUserData).
+
+skip_group_sc_reconnect(Bin, FNum, Z2, F@_1, F@_2, F@_3,
+			TrUserData) ->
+    {_, Rest} = read_group(Bin, FNum),
+    dfp_read_field_def_sc_reconnect(Rest, 0, Z2, F@_1, F@_2,
+				    F@_3, TrUserData).
+
+skip_32_sc_reconnect(<<_:32, Rest/binary>>, Z1, Z2,
+		     F@_1, F@_2, F@_3, TrUserData) ->
+    dfp_read_field_def_sc_reconnect(Rest, Z1, Z2, F@_1,
+				    F@_2, F@_3, TrUserData).
+
+skip_64_sc_reconnect(<<_:64, Rest/binary>>, Z1, Z2,
+		     F@_1, F@_2, F@_3, TrUserData) ->
+    dfp_read_field_def_sc_reconnect(Rest, Z1, Z2, F@_1,
+				    F@_2, F@_3, TrUserData).
 
 read_group(Bin, FieldNum) ->
     {NumBytes, EndTagLen} = read_gr_b(Bin, 0, 0, 0, 0, FieldNum),
@@ -421,21 +934,54 @@ merge_msgs(Prev, New, Opts)
 merge_msgs(Prev, New, MsgName, Opts) ->
     TrUserData = proplists:get_value(user_data, Opts),
     case MsgName of
-      cs_login -> merge_msg_cs_login(Prev, New, TrUserData)
+      cs_login -> merge_msg_cs_login(Prev, New, TrUserData);
+      sc_login -> merge_msg_sc_login(Prev, New, TrUserData);
+      cs_reconnect ->
+	  merge_msg_cs_reconnect(Prev, New, TrUserData);
+      sc_reconnect ->
+	  merge_msg_sc_reconnect(Prev, New, TrUserData)
     end.
 
 -compile({nowarn_unused_function,merge_msg_cs_login/3}).
-merge_msg_cs_login(#cs_login{account = PFaccount,
-			     aid = PFaid},
-		   #cs_login{account = NFaccount, aid = NFaid}, _) ->
-    #cs_login{account =
-		  if NFaccount =:= undefined -> PFaccount;
-		     true -> NFaccount
-		  end,
-	      aid =
-		  if NFaid =:= undefined -> PFaid;
-		     true -> NFaid
-		  end}.
+merge_msg_cs_login(#cs_login{}, #cs_login{aid = NFaid},
+		   _) ->
+    #cs_login{aid = NFaid}.
+
+-compile({nowarn_unused_function,merge_msg_sc_login/3}).
+merge_msg_sc_login(#sc_login{},
+		   #sc_login{ret_code = NFret_code,
+			     player_uid = NFplayer_uid},
+		   _) ->
+    #sc_login{ret_code = NFret_code,
+	      player_uid = NFplayer_uid}.
+
+-compile({nowarn_unused_function,merge_msg_cs_reconnect/3}).
+merge_msg_cs_reconnect(#cs_reconnect{},
+		       #cs_reconnect{aid = NFaid,
+				     last_packet_seq_from_client =
+					 NFlast_packet_seq_from_client,
+				     last_packet_seq_from_server =
+					 NFlast_packet_seq_from_server},
+		       _) ->
+    #cs_reconnect{aid = NFaid,
+		  last_packet_seq_from_client =
+		      NFlast_packet_seq_from_client,
+		  last_packet_seq_from_server =
+		      NFlast_packet_seq_from_server}.
+
+-compile({nowarn_unused_function,merge_msg_sc_reconnect/3}).
+merge_msg_sc_reconnect(#sc_reconnect{},
+		       #sc_reconnect{ret_code = NFret_code,
+				     last_packet_seq_from_client =
+					 NFlast_packet_seq_from_client,
+				     last_packet_seq_from_server =
+					 NFlast_packet_seq_from_server},
+		       _) ->
+    #sc_reconnect{ret_code = NFret_code,
+		  last_packet_seq_from_client =
+		      NFlast_packet_seq_from_client,
+		  last_packet_seq_from_server =
+		      NFlast_packet_seq_from_server}.
 
 
 verify_msg(Msg) when tuple_size(Msg) >= 1 ->
@@ -454,23 +1000,74 @@ verify_msg(Msg, MsgName, Opts) ->
     TrUserData = proplists:get_value(user_data, Opts),
     case MsgName of
       cs_login -> v_msg_cs_login(Msg, [MsgName], TrUserData);
+      sc_login -> v_msg_sc_login(Msg, [MsgName], TrUserData);
+      cs_reconnect ->
+	  v_msg_cs_reconnect(Msg, [MsgName], TrUserData);
+      sc_reconnect ->
+	  v_msg_sc_reconnect(Msg, [MsgName], TrUserData);
       _ -> mk_type_error(not_a_known_message, Msg, [])
     end.
 
 
 -compile({nowarn_unused_function,v_msg_cs_login/3}).
 -dialyzer({nowarn_function,v_msg_cs_login/3}).
-v_msg_cs_login(#cs_login{account = F1, aid = F2}, Path,
-	       TrUserData) ->
-    if F1 == undefined -> ok;
-       true -> v_type_string(F1, [account | Path], TrUserData)
-    end,
-    if F2 == undefined -> ok;
-       true -> v_type_string(F2, [aid | Path], TrUserData)
-    end,
-    ok;
+v_msg_cs_login(#cs_login{aid = F1}, Path, TrUserData) ->
+    v_type_string(F1, [aid | Path], TrUserData), ok;
 v_msg_cs_login(X, Path, _TrUserData) ->
     mk_type_error({expected_msg, cs_login}, X, Path).
+
+-compile({nowarn_unused_function,v_msg_sc_login/3}).
+-dialyzer({nowarn_function,v_msg_sc_login/3}).
+v_msg_sc_login(#sc_login{ret_code = F1,
+			 player_uid = F2},
+	       Path, TrUserData) ->
+    v_type_int32(F1, [ret_code | Path], TrUserData),
+    v_type_int32(F2, [player_uid | Path], TrUserData),
+    ok;
+v_msg_sc_login(X, Path, _TrUserData) ->
+    mk_type_error({expected_msg, sc_login}, X, Path).
+
+-compile({nowarn_unused_function,v_msg_cs_reconnect/3}).
+-dialyzer({nowarn_function,v_msg_cs_reconnect/3}).
+v_msg_cs_reconnect(#cs_reconnect{aid = F1,
+				 last_packet_seq_from_client = F2,
+				 last_packet_seq_from_server = F3},
+		   Path, TrUserData) ->
+    v_type_string(F1, [aid | Path], TrUserData),
+    v_type_int32(F2, [last_packet_seq_from_client | Path],
+		 TrUserData),
+    v_type_int32(F3, [last_packet_seq_from_server | Path],
+		 TrUserData),
+    ok;
+v_msg_cs_reconnect(X, Path, _TrUserData) ->
+    mk_type_error({expected_msg, cs_reconnect}, X, Path).
+
+-compile({nowarn_unused_function,v_msg_sc_reconnect/3}).
+-dialyzer({nowarn_function,v_msg_sc_reconnect/3}).
+v_msg_sc_reconnect(#sc_reconnect{ret_code = F1,
+				 last_packet_seq_from_client = F2,
+				 last_packet_seq_from_server = F3},
+		   Path, TrUserData) ->
+    v_type_int32(F1, [ret_code | Path], TrUserData),
+    v_type_int32(F2, [last_packet_seq_from_client | Path],
+		 TrUserData),
+    v_type_int32(F3, [last_packet_seq_from_server | Path],
+		 TrUserData),
+    ok;
+v_msg_sc_reconnect(X, Path, _TrUserData) ->
+    mk_type_error({expected_msg, sc_reconnect}, X, Path).
+
+-compile({nowarn_unused_function,v_type_int32/3}).
+-dialyzer({nowarn_function,v_type_int32/3}).
+v_type_int32(N, _Path, _TrUserData)
+    when -2147483648 =< N, N =< 2147483647 ->
+    ok;
+v_type_int32(N, Path, _TrUserData) when is_integer(N) ->
+    mk_type_error({value_out_of_range, int32, signed, 32},
+		  N, Path);
+v_type_int32(X, Path, _TrUserData) ->
+    mk_type_error({bad_integer, int32, signed, 32}, X,
+		  Path).
 
 -compile({nowarn_unused_function,v_type_string/3}).
 -dialyzer({nowarn_function,v_type_string/3}).
@@ -530,19 +1127,42 @@ cons(Elem, Acc, _TrUserData) -> [Elem | Acc].
 
 get_msg_defs() ->
     [{{msg, cs_login},
-      [#field{name = account, fnum = 1, rnum = 2,
-	      type = string, occurrence = optional, opts = []},
-       #field{name = aid, fnum = 2, rnum = 3, type = string,
-	      occurrence = optional, opts = []}]}].
+      [#field{name = aid, fnum = 1, rnum = 2, type = string,
+	      occurrence = required, opts = []}]},
+     {{msg, sc_login},
+      [#field{name = ret_code, fnum = 1, rnum = 2,
+	      type = int32, occurrence = required, opts = []},
+       #field{name = player_uid, fnum = 2, rnum = 3,
+	      type = int32, occurrence = required, opts = []}]},
+     {{msg, cs_reconnect},
+      [#field{name = aid, fnum = 1, rnum = 2, type = string,
+	      occurrence = required, opts = []},
+       #field{name = last_packet_seq_from_client, fnum = 2,
+	      rnum = 3, type = int32, occurrence = required,
+	      opts = []},
+       #field{name = last_packet_seq_from_server, fnum = 3,
+	      rnum = 4, type = int32, occurrence = required,
+	      opts = []}]},
+     {{msg, sc_reconnect},
+      [#field{name = ret_code, fnum = 1, rnum = 2,
+	      type = int32, occurrence = required, opts = []},
+       #field{name = last_packet_seq_from_client, fnum = 2,
+	      rnum = 3, type = int32, occurrence = required,
+	      opts = []},
+       #field{name = last_packet_seq_from_server, fnum = 3,
+	      rnum = 4, type = int32, occurrence = required,
+	      opts = []}]}].
 
 
-get_msg_names() -> [cs_login].
+get_msg_names() ->
+    [cs_login, sc_login, cs_reconnect, sc_reconnect].
 
 
 get_group_names() -> [].
 
 
-get_msg_or_group_names() -> [cs_login].
+get_msg_or_group_names() ->
+    [cs_login, sc_login, cs_reconnect, sc_reconnect].
 
 
 get_enum_names() -> [].
@@ -561,10 +1181,31 @@ fetch_enum_def(EnumName) ->
 
 
 find_msg_def(cs_login) ->
-    [#field{name = account, fnum = 1, rnum = 2,
-	    type = string, occurrence = optional, opts = []},
-     #field{name = aid, fnum = 2, rnum = 3, type = string,
-	    occurrence = optional, opts = []}];
+    [#field{name = aid, fnum = 1, rnum = 2, type = string,
+	    occurrence = required, opts = []}];
+find_msg_def(sc_login) ->
+    [#field{name = ret_code, fnum = 1, rnum = 2,
+	    type = int32, occurrence = required, opts = []},
+     #field{name = player_uid, fnum = 2, rnum = 3,
+	    type = int32, occurrence = required, opts = []}];
+find_msg_def(cs_reconnect) ->
+    [#field{name = aid, fnum = 1, rnum = 2, type = string,
+	    occurrence = required, opts = []},
+     #field{name = last_packet_seq_from_client, fnum = 2,
+	    rnum = 3, type = int32, occurrence = required,
+	    opts = []},
+     #field{name = last_packet_seq_from_server, fnum = 3,
+	    rnum = 4, type = int32, occurrence = required,
+	    opts = []}];
+find_msg_def(sc_reconnect) ->
+    [#field{name = ret_code, fnum = 1, rnum = 2,
+	    type = int32, occurrence = required, opts = []},
+     #field{name = last_packet_seq_from_client, fnum = 2,
+	    rnum = 3, type = int32, occurrence = required,
+	    opts = []},
+     #field{name = last_packet_seq_from_server, fnum = 3,
+	    rnum = 4, type = int32, occurrence = required,
+	    opts = []}];
 find_msg_def(_) -> error.
 
 
@@ -631,10 +1272,16 @@ service_and_rpc_name_to_fqbins(S, R) ->
 
 
 fqbin_to_msg_name(<<"cs_login">>) -> cs_login;
+fqbin_to_msg_name(<<"sc_login">>) -> sc_login;
+fqbin_to_msg_name(<<"cs_reconnect">>) -> cs_reconnect;
+fqbin_to_msg_name(<<"sc_reconnect">>) -> sc_reconnect;
 fqbin_to_msg_name(E) -> error({gpb_error, {badmsg, E}}).
 
 
 msg_name_to_fqbin(cs_login) -> <<"cs_login">>;
+msg_name_to_fqbin(sc_login) -> <<"sc_login">>;
+msg_name_to_fqbin(cs_reconnect) -> <<"cs_reconnect">>;
+msg_name_to_fqbin(sc_reconnect) -> <<"sc_reconnect">>;
 msg_name_to_fqbin(E) -> error({gpb_error, {badmsg, E}}).
 
 
@@ -675,7 +1322,8 @@ get_all_source_basenames() -> ["login.proto"].
 get_all_proto_names() -> ["login"].
 
 
-get_msg_containment("login") -> [cs_login];
+get_msg_containment("login") ->
+    [cs_login, cs_reconnect, sc_login, sc_reconnect];
 get_msg_containment(P) ->
     error({gpb_error, {badproto, P}}).
 
@@ -700,6 +1348,9 @@ get_enum_containment(P) ->
     error({gpb_error, {badproto, P}}).
 
 
+get_proto_by_msg_name_as_fqbin(<<"sc_reconnect">>) -> "login";
+get_proto_by_msg_name_as_fqbin(<<"cs_reconnect">>) -> "login";
+get_proto_by_msg_name_as_fqbin(<<"sc_login">>) -> "login";
 get_proto_by_msg_name_as_fqbin(<<"cs_login">>) -> "login";
 get_proto_by_msg_name_as_fqbin(E) ->
     error({gpb_error, {badmsg, E}}).
