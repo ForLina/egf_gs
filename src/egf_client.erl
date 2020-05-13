@@ -136,7 +136,8 @@ handle_info({inet_async, Socket, Seq, {ok, Data}},
             {noreply, State#state{login_suc = true,
                                   player_pid = PlayerPid,
                                   req_seq = Seq}};
-        {error, Reason} ->
+        {error, Reply, Reason} ->
+            Transport:async_send(Socket, Reply),
             {stop, {error, Reason}, State}
     end;
 

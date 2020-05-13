@@ -31,7 +31,8 @@
 
 %% @doc Handle the first packet from client, must be a login or reconnect packet
 -spec handle_first_packet(binary(), pid()) ->
-    {ok, Reply :: binary(), PlayerPid :: pid()} | {error, Reply :: binary()}.
+    {ok, Reply :: binary(), PlayerPid :: pid()}
+    | {error, Reply :: binary(), Reason :: term()}.
 handle_first_packet(<<?MOD_LOGIN:8/integer,
                       ?CS_LOGIN:8/integer,
                       0:16/integer, Proto>>, ConnectProcess) ->
@@ -41,7 +42,9 @@ handle_first_packet(<<?MOD_LOGIN:8/integer,
                       ?CS_RECONNECT:8/integer,
                       0:16/integer, Proto>>, ConnectProcess) ->
     Req = pb_login:decode_msg(Proto, cs_reconnect),
-    reconnect(Req, ConnectProcess).
+    reconnect(Req, ConnectProcess);
+handle_first_packet(_Bin, _CPid) ->
+    {error, invalid_packet}.
 
 login(#cs_login{aid = Aid}, CPid) ->
     case player:get_uid_by_aid(Aid) of
@@ -75,7 +78,7 @@ login(#cs_login{aid = Aid}, CPid) ->
         0 ->
             {ok, RetBin, PlayerPid};
         _Other ->
-            {error, RetCode}
+            {error, RetBin, create_process_failed}
     end.
     
 %% @todo
