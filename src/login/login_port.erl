@@ -32,7 +32,8 @@
 %% @doc Handle the first packet from client, must be a login or reconnect packet
 -spec handle_first_packet(binary(), pid()) ->
     {ok, Reply :: binary(), PlayerPid :: pid()}
-    | {error, Reply :: binary(), Reason :: term()}.
+    | {error, Reply :: binary(), Reason :: term()}
+    | {error, Reason :: term()}.
 handle_first_packet(<<?MOD_LOGIN:8/integer,
                       ?CS_LOGIN:8/integer,
                       0:16/integer, Proto>>, ConnectProcess) ->

@@ -138,6 +138,8 @@ handle_info({inet_async, Socket, Seq, {ok, Data}},
                                   req_seq = Seq}};
         {error, Reply, Reason} ->
             Transport:async_send(Socket, Reply),
+            {stop, {error, Reason}, State};
+        {error, Reason} ->
             {stop, {error, Reason}, State}
     end;
 
