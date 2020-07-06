@@ -7,7 +7,8 @@
    [kernel,
     stdlib,
     esockd,
-    egf_config
+    egf_config,
+    mnesia
    ]},
   {env,[]},
   {modules, []},

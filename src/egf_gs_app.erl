@@ -34,8 +34,11 @@ start(_StartType, _StartArgs) ->
     
     load_config(),
     
+    ok = start_db(),
     {ok, Pid} = egf_gs_sup:start_link(),
     start_gateway(),
+    
+    ?LOG_INFO("Server started at ~p~n", [calendar:now_to_datetime(os:timestamp())]),
     {ok, Pid}.
 
 stop(_State) ->
@@ -54,4 +57,14 @@ init_logger() ->
 
 load_config() ->
     DevDir = filename:absname("./config/dev"),
+    ok = egf_config:load_dir(DevDir),
     ok = egf_config:add_dir(DevDir).
+
+%% @doc Start database we need, I suggest using mnesia only.
+-spec start_db() -> ok.
+start_db() ->
+    DbDir = filename:absname("./db"),
+    filelib:ensure_dir(DbDir),
+    application:set_env(mnesia, dir, DbDir),
+    mnesia:create_schema([node()]),
+    ok = mnesia:start().

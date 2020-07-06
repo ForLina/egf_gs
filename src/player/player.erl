@@ -27,8 +27,14 @@
 %% API
 -export([start_link/0]).
 -export([
-      get_uid_by_aid/1
-    , init_player/1, handle_msg/2, get_pid/1, create_process/1, update_cpid/2, kick/1]).
+    get_uid_by_aid/1,
+    init_player/1,
+    handle_msg/2,
+    get_pid/1,
+    create_process/1,
+    update_cpid/2,
+    kick/1
+]).
 
 %% gen_server callbacks
 -export([init/1, handle_call/3, handle_cast/2, handle_info/2, terminate/2,
