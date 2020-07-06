@@ -57,7 +57,6 @@ init_logger() ->
 
 load_config() ->
     DevDir = filename:absname("./config/dev"),
-    ok = egf_config:load_dir(DevDir),
     ok = egf_config:add_dir(DevDir).
 
 %% @doc Start database we need, I suggest using mnesia only.
